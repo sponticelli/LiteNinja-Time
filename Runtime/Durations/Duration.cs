@@ -1,21 +1,15 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
-using UnityEngine;
 
 namespace LiteNinja.TimeUtils
 {
-    /// <summary>
-    /// A class to deal with Durations.
-    /// Duration can be expressed as a string in the format of "10w9d8h7m6s5ms", with optional value for each unit.
-    /// </summary>
-    [Serializable]
-    public class Duration
+    public static class Duration
     {
         #region Consts
-
+        private const double Nanosecond = Microsecond / 1000;
+        private const double Microsecond = Millisecond / 1000;
         private const double Millisecond = 1;
         private const double Second = 1000 * Millisecond;
         private const double Minute = 60 * Second;
@@ -25,6 +19,9 @@ namespace LiteNinja.TimeUtils
 
         private static readonly Dictionary<string, double> UnitToMillisecond = new()
         {
+            { "ns", Nanosecond },
+            { "us", Microsecond },
+            { "µs", Microsecond },
             { "ms", Millisecond },
             { "s", Second },
             { "m", Minute },
@@ -33,36 +30,108 @@ namespace LiteNinja.TimeUtils
             { "w", Week }
         };
 
-        private static Regex _unitRegex = new(@"(?:(\d+\.?\d*)|(\.\d*))\s*(ms|s|m|h|d|w)");
-        private static Regex _alphaRegex = new(@"[^a-zA-Z]");
+        private static readonly Regex UnitRegex = new(@"(?:(\d+\.?\d*)|(\.\d*))\s*(ns|us|µs|ms|s|m|h|d|w)");
+        private static readonly Regex AlphaRegex = new(@"[^a-zA-Z]");
 
         #endregion
 
-        [SerializeField] private double _milliseconds;
-
-        public double Milliseconds => _milliseconds;
-        public double Seconds => _milliseconds / Second;
-        public double Minutes => _milliseconds / Minute;
-        public double Hours => _milliseconds / Hour;
-        public double Days => _milliseconds / Day;
-        public double Weeks => _milliseconds / Week;
-
-        public Duration(double milliseconds)
+        /// <summary>
+        /// Convert a duration string to a time span, even if it's not a valid duration string.
+        /// </summary>
+        public static TimeSpan SafeParse(string duration)
         {
-            _milliseconds = milliseconds;
+            return Parse(duration);
+        }
+        
+        /// <summary>
+        /// Convert a duration string to a time span.
+        /// if ignoreInvalid is true, the part of the string that is not a valid duration will be ignored.
+        /// </summary>
+        public static TimeSpan Parse(string duration, bool ignoreInvalid = false)
+        {
+            if (duration == null) return new TimeSpan();
+            duration = duration.Trim().ToLower();
+            //remove all spaces from duration
+            duration = duration.Replace(" ", "");
+            if (string.IsNullOrEmpty(duration) || (duration is "0" or "+0" or "-0"))
+            {
+                return new TimeSpan(0);
+            }
+
+            var negative = duration.StartsWith("-");
+            if (negative)
+            {
+                duration = duration[1..];
+            }
+
+            var matches = UnitRegex.Matches(duration);
+            double totalMilliseconds = 0f;
+            foreach (var match in matches.AsEnumerable())
+            {
+                var matchString = match.ToString();
+                var unit = AlphaRegex.Replace(matchString, "");
+                matchString = matchString.Replace(unit, "");
+                var matchValue = double.Parse(matchString);
+                if (UnitToMillisecond.ContainsKey(unit))
+                {
+                    totalMilliseconds += matchValue * UnitToMillisecond[unit];
+                }
+                else if (!ignoreInvalid)
+                {
+                    throw new ArgumentException($"Invalid duration unit: {unit}");
+                }
+            }
+
+            if (negative)
+            {
+                totalMilliseconds = -totalMilliseconds;
+            }
+
+            return TimeSpan.FromMilliseconds(totalMilliseconds);
         }
 
-        public Duration(string duration)
+        /// <summary>
+        /// Check if a string is a completely valid duration string.
+        /// </summary>
+        public static bool Parseable(string duration)
         {
-            var value = Parse(duration);
-            _milliseconds = value.Milliseconds;
+            var matches = UnitRegex.Matches(duration);
+            //check if there is at least one match
+            if (matches.Count == 0)
+            {
+                return false;
+            }
+
+            return matches.AsEnumerable().Select(match => match.ToString())
+                .Select(matchString => AlphaRegex.Replace(matchString, ""))
+                .All(unit => UnitToMillisecond.ContainsKey(unit));
+        }
+        
+        /// <summary>
+        /// Try to parse a duration string to a time span.
+        /// </summary>
+        public static bool TryParse(string duration, out TimeSpan timeSpan)
+        {
+            try
+            {
+                timeSpan = Parse(duration);
+                return true;
+            }
+            catch
+            {
+                timeSpan = new TimeSpan();
+                return false;
+            }
         }
 
-        public override string ToString()
+        /// <summary>
+        /// Convert a TimeSpan to a duration string.
+        /// </summary>
+        public static string ToDuration(this TimeSpan timeSpan)
         {
             var result = "";
-            var milliseconds = _milliseconds < 0 ? -_milliseconds : _milliseconds;
-            var sign = _milliseconds < 0 ? "-" : "";
+            var milliseconds = timeSpan.TotalMilliseconds;
+            var sign = milliseconds < 0 ? "-" : "";
             if (milliseconds == 0)
             {
                 return "0";
@@ -115,279 +184,27 @@ namespace LiteNinja.TimeUtils
                 result += $"{floorMilliseconds}ms";
                 milliseconds -= floorMilliseconds;
             }
-
-
+            
+            //microseconds
+            var microseconds = Math.Floor(milliseconds / Microsecond);
+            if (microseconds > 0)
+            {
+                result += $"{microseconds}µs";
+                milliseconds -= microseconds * Microsecond;
+            }
+            
+            //nanoseconds
+            var nanoseconds = Math.Floor(milliseconds / Nanosecond);
+            if (nanoseconds > 0)
+            {
+                result += $"{nanoseconds}ns";
+                milliseconds -= nanoseconds * Nanosecond;
+            }
+            
             return $"{sign}{result}";
         }
-
-        public static Duration Parse(string duration)
-        {
-            if (duration == null) return new Duration(0f);
-            duration = duration.Trim().ToLower();
-            if (string.IsNullOrEmpty(duration) || (duration is "0" or "+0" or "-0"))
-            {
-                return new Duration(0f);
-            }
-
-            var negative = duration.StartsWith("-");
-            if (negative)
-            {
-                duration = duration[1..];
-            }
-
-            var matches = _unitRegex.Matches(duration);
-            double totalMilliseconds = 0f;
-            foreach (var match in matches.AsEnumerable())
-            {
-                var matchString = match.ToString();
-                var unit = _alphaRegex.Replace(matchString, "");
-                matchString = matchString.Replace(unit, "");
-                var matchValue = double.Parse(matchString);
-                if (UnitToMillisecond.ContainsKey(unit))
-                {
-                    totalMilliseconds += matchValue * UnitToMillisecond[unit];
-                }
-            }
-
-            if (negative)
-            {
-                totalMilliseconds = -totalMilliseconds;
-            }
-
-            return new Duration(totalMilliseconds);
-        }
-
-        public static bool Parseable(string duration)
-        {
-            var matches = _unitRegex.Matches(duration);
-            //check if there is at least one match
-            if (matches.Count == 0)
-            {
-                return false;
-            }
-
-            return matches.AsEnumerable().Select(match => match.ToString())
-                .Select(matchString => _alphaRegex.Replace(matchString, ""))
-                .All(unit => UnitToMillisecond.ContainsKey(unit));
-        }
-
-        #region Operators
-
-        public static Duration operator +(Duration a, Duration b)
-        {
-            return new Duration(a._milliseconds + b._milliseconds);
-        }
-
-        public static Duration operator -(Duration a, Duration b)
-        {
-            return new Duration(a._milliseconds - b._milliseconds);
-        }
-
-        public static Duration operator *(Duration a, double b)
-        {
-            return new Duration(a._milliseconds * b);
-        }
-
-        public static Duration operator *(double a, Duration b)
-        {
-            return new Duration(a * b._milliseconds);
-        }
-
-        public static Duration operator /(Duration a, double b)
-        {
-            return new Duration(a._milliseconds / b);
-        }
-        
-        public static DateTime operator +(Duration a, DateTime b)
-        {
-            return b.AddMilliseconds(a._milliseconds);
-        }
-        
-        public static DateTime operator -(Duration a, DateTime b)
-        {
-            return b.AddMilliseconds(-a._milliseconds);
-        }
-        
-        public static DateTime operator +(DateTime a, Duration b)
-        {
-            return a.AddMilliseconds(b._milliseconds);
-        }
-        
-        public static DateTime operator -(DateTime a, Duration b)
-        {
-            return a.AddMilliseconds(-b._milliseconds);
-        }
-        
-
-        #endregion
-
-        #region Equality
-
-        public override bool Equals(object obj)
-        {
-            if (obj is Duration duration)
-            {
-                return _milliseconds == duration._milliseconds;
-            }
-
-            return false;
-        }
-
-        public override int GetHashCode()
-        {
-            return _milliseconds.GetHashCode();
-        }
-
-        public static bool operator ==(Duration a, Duration b)
-        {
-            return a._milliseconds == b._milliseconds;
-        }
         
         
-        public static bool operator !=(Duration a, Duration b)
-        {
-            return a._milliseconds != b._milliseconds;
-        }
-
-        public static bool operator <(Duration a, Duration b)
-        {
-            return a._milliseconds < b._milliseconds;
-        }
-
-        public static bool operator >(Duration a, Duration b)
-        {
-            return a._milliseconds > b._milliseconds;
-        }
-
-        public static bool operator <=(Duration a, Duration b)
-        {
-            return a._milliseconds <= b._milliseconds;
-        }
-
-        public static bool operator >=(Duration a, Duration b)
-        {
-            return a._milliseconds >= b._milliseconds;
-        }
-
-        public static bool operator ==(double a, Duration b)
-        {
-            return a == b._milliseconds;
-        }
-
-        public static bool operator !=(double a, Duration b)
-        {
-            return a != b._milliseconds;
-        }
-
-        public static bool operator <(double a, Duration b)
-        {
-            return a < b._milliseconds;
-        }
-
-        public static bool operator >(double a, Duration b)
-        {
-            return a > b._milliseconds;
-        }
-
-        public static bool operator <=(double a, Duration b)
-        {
-            return a <= b._milliseconds;
-        }
-
-        public static bool operator >=(double a, Duration b)
-        {
-            return a >= b._milliseconds;
-        }
-
-        public static bool operator ==(Duration a, double b)
-        {
-            return a._milliseconds == b;
-        }
-
-        public static bool operator !=(Duration a, double b)
-        {
-            return a._milliseconds != b;
-        }
-
-        public static bool operator <(Duration a, double b)
-        {
-            return a._milliseconds < b;
-        }
-
-        public static bool operator >(Duration a, double b)
-        {
-            return a._milliseconds > b;
-        }
-
-        public static bool operator <=(Duration a, double b)
-        {
-            return a._milliseconds <= b;
-        }
-
-        public static bool operator >=(Duration a, double b)
-        {
-            return a._milliseconds >= b;
-        }
-
-        #endregion
-
-        #region Conversion
-
-        public static implicit operator Duration(double milliseconds)
-        {
-            return new Duration(milliseconds);
-        }
-
-        public static implicit operator double(Duration duration)
-        {
-            return duration._milliseconds;
-        }
-
-        public static implicit operator string(Duration duration)
-        {
-            return duration.ToString();
-        }
-
-        #endregion
         
-
-        #region static factory method
-
-        public static Duration FromMilliseconds(double milliseconds)
-        {
-            return new Duration(milliseconds);
-        }
-
-        public static Duration FromSeconds(double seconds)
-        {
-            return new Duration(seconds * Second);
-        }
-
-        public static Duration FromMinutes(double minutes)
-        {
-            return new Duration(minutes * Minute);
-        }
-
-        public static Duration FromHours(double hours)
-        {
-            return new Duration(hours * Hour);
-        }
-
-        public static Duration FromDays(double days)
-        {
-            return new Duration(days * Day);
-        }
-
-        public static Duration FromWeeks(double weeks)
-        {
-            return new Duration(weeks * Week);
-        }
-
-        public static Duration FromString(string duration)
-        {
-            return new Duration(duration);
-        }
-
-        #endregion
     }
 }
