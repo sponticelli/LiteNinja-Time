@@ -5,6 +5,23 @@ A library of Time-related classes for Unity3D
 
 ### Duration
 A static class that can parse a string to TimeSpan and vice versa.
+Units are:
+- nanoseconds: ns
+- microseconds: us or µs
+- milliseconds: ms
+- seconds: s
+- minutes: m
+- hours: h
+- days: d
+- weeks: w
+
+Example:
+```
+1.5s 
+1h30m
+24h
+1d
+```
 
 #### Parse
 Parse a string into a TimeSpan. 
