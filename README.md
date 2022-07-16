@@ -39,6 +39,16 @@ var timespan = Duration.ParseSafe("90m1parsec");
 Debug.Log(timespan.ToDuration(); // "1h30m"
 ```
 
+#### TryParse
+Try to parse a string into a TimeSpan. 
+```
+Duration.TryParse("90m", out timespan); // true, timespan = "1h30m"
+Duration.TryParse("1h30m", out timespan); // true, timespan = "1h30m"
+Duration.TryParse("1.5h", out timespan); // true, timespan = "1.5h"
+Duration.TryParse("1h30m1parsec", out timespan); // false, timespan = "0"
+```
+
+
 #### Parseable
 You can check if the string is in the correct format by using the `Parseable` method.
 
