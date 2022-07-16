@@ -70,7 +70,7 @@ var duration = timeSpan.ToDuration(); // duration = 1d
 
 #### Tests
 A good coverage of the Duration class is provided by the tests. 
-Peek at them to see how can you use the class.
+Peek at them to see how you can use the class.
 
 ## Install through [Unity Package Manager](https://docs.unity3d.com/Manual/upm-ui-giturl.html)
 
