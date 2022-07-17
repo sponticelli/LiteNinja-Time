@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using LiteNinja.TimeUtils.Durations;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -50,6 +51,7 @@ namespace LiteNinja.TimeUtils.Tests
             timeSpan = new TimeSpan(1, 30, 0);
             Assert.AreEqual( "1h30m", timeSpan.ToDuration());
         }
+        
         
     }
 }

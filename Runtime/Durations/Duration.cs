@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace LiteNinja.TimeUtils
+namespace LiteNinja.TimeUtils.Durations
 {
     public static class Duration
     {
@@ -29,10 +29,6 @@ namespace LiteNinja.TimeUtils
             { "d", Day },
             { "w", Week }
         };
-
-        private static readonly Regex UnitRegex = new(@"(?:(\d+\.?\d*)|(\.\d*))\s*(ns|us|µs|ms|s|m|h|d|w)");
-        private static readonly Regex AlphaRegex = new(@"[^a-zA-Z]");
-
         #endregion
 
         /// <summary>
@@ -49,63 +45,42 @@ namespace LiteNinja.TimeUtils
         /// </summary>
         public static TimeSpan Parse(string duration, bool ignoreInvalid = false)
         {
-            if (duration == null) return new TimeSpan();
-            duration = duration.Trim().ToLower();
-            //remove all spaces from duration
-            duration = duration.Replace(" ", "");
-            if (string.IsNullOrEmpty(duration) || (duration is "0" or "+0" or "-0"))
+            var tokenizer = new Tokenizer(duration);
+            tokenizer.Tokenize();
+            var tokens = ignoreInvalid ? tokenizer.CleanTokens : tokenizer.Tokens;
+            double totalMilliseconds = 0;
+            if (tokens.Count == 0) return new TimeSpan(0);
+            var index = 0;
+            while (index < tokens.Count)
             {
-                return new TimeSpan(0);
-            }
-
-            var negative = duration.StartsWith("-");
-            if (negative)
-            {
-                duration = duration[1..];
-            }
-
-            var matches = UnitRegex.Matches(duration);
-            double totalMilliseconds = 0f;
-            foreach (var match in matches.AsEnumerable())
-            {
-                var matchString = match.ToString();
-                var unit = AlphaRegex.Replace(matchString, "");
-                matchString = matchString.Replace(unit, "");
-                var matchValue = double.Parse(matchString);
-                if (UnitToMillisecond.ContainsKey(unit))
+                var token = tokens[index];
+                if (token.Type == TokenType.Number)
                 {
-                    totalMilliseconds += matchValue * UnitToMillisecond[unit];
+                    var number = double.Parse(token.Value);
+                    index = ExtractUnit(duration, ignoreInvalid, index, tokens, number, ref totalMilliseconds);
                 }
-                else if (!ignoreInvalid)
+                else
                 {
-                    throw new ArgumentException($"Invalid duration unit: {unit}");
+                    index++;
                 }
             }
-
-            if (negative)
-            {
-                totalMilliseconds = -totalMilliseconds;
-            }
-
+            
             return TimeSpan.FromMilliseconds(totalMilliseconds);
         }
+
+        
 
         /// <summary>
         /// Check if a string is a completely valid duration string.
         /// </summary>
         public static bool Parseable(string duration)
         {
-            var matches = UnitRegex.Matches(duration);
-            //check if there is at least one match
-            if (matches.Count == 0)
-            {
-                return false;
-            }
-
-            return matches.AsEnumerable().Select(match => match.ToString())
-                .Select(matchString => AlphaRegex.Replace(matchString, ""))
-                .All(unit => UnitToMillisecond.ContainsKey(unit));
+            var tokenizer = new Tokenizer(duration);
+            tokenizer.Tokenize();
+            return !tokenizer.HasNonToken;
         }
+        
+        
         
         /// <summary>
         /// Try to parse a duration string to a time span.
@@ -204,7 +179,56 @@ namespace LiteNinja.TimeUtils
             return $"{sign}{result}";
         }
         
-        
+        #region Private methods
+        private static int ExtractUnit(string duration, bool ignoreInvalid, int index, IReadOnlyList<Token> tokens, double number,
+            ref double totalMilliseconds)
+        {
+            if (index + 1 < tokens.Count)
+            {
+                var unitToken = tokens[index + 1];
+                if (unitToken.Type == TokenType.Unit)
+                {
+                    totalMilliseconds = AddMilliseconds(ignoreInvalid, unitToken, totalMilliseconds, number,
+                        ref index);
+                }
+                else
+                {
+                    throw new FormatException($"Invalid duration format: {duration}");
+                }
+            }
+            else
+            {
+                totalMilliseconds += number;
+                index++;
+            }
+
+            return index;
+        }
+
+        private static double AddMilliseconds(bool ignoreInvalid, Token unitToken, double totalMilliseconds, double number,
+            ref int index)
+        {
+            var unit = unitToken.Value;
+            if (UnitToMillisecond.TryGetValue(unit, out var unitMilliseconds))
+            {
+                totalMilliseconds += number * unitMilliseconds;
+                index += 2;
+            }
+            else
+            {
+                if (ignoreInvalid)
+                {
+                    index += 2;
+                }
+                else
+                {
+                    throw new ArgumentException($"Invalid unit: {unit}");
+                }
+            }
+
+            return totalMilliseconds;
+        }
+        #endregion
         
     }
 }
