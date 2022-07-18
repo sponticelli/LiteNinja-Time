@@ -1,8 +1,8 @@
 {
   "name": "com.liteninja.timeutils",
   "version": "1.0.2",
-  "displayName": "A library of Time-related classes for Unity3D",
-  "description": "A Color library for Unity3d",
+  "displayName": "LiteNinja-TimeUtils",
+  "description": "A library of Time-related classes for Unity3D",
   "unity": "2019.1",
   "documentationUrl": "https://github.com/sponticelli/LiteNinja-TimeUtils/blob/main/README.md",
   "changelogUrl": "https://github.com/sponticelli/LiteNinja-TimeUtils/blob/main/changelog.md",
